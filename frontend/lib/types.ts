@@ -1,0 +1,13 @@
+import type { Source } from "./sse";
+export type User = { id: string; email: string; name: string };
+export type Session = { user: User; csrf_token: string };
+export type Workspace = { id: string; name: string; role: "admin" | "editor" | "reader" };
+export type Message = { id: string; role: "user" | "assistant"; content: string; sources?: Source[]; status?: string };
+export type Conversation = { id: string; title: string; pinned?: boolean; messages?: Message[] };
+export type Doc = { id: string; name: string; version: number | null; chunk_count: number | null; original_available: boolean; job_status: string; progress: number | null; error: string | null };
+export type Job = { id: string; name: string; status: string; progress: number; attempts: number; error: string | null };
+export type Member = { id: string; name: string; email: string; role: string };
+export const box = "rounded-xl border border-[var(--border)] bg-[var(--surface)]";
+export const field = "rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm";
+export const button = "rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--hover)] disabled:opacity-40";
+export const primary = "rounded-lg bg-[var(--accent)] px-3 py-2 text-sm text-[var(--accent-fg)] disabled:opacity-40";
