@@ -1,0 +1,156 @@
+x-backend: &backend
+  image: rag-backend
+  build: ./backend
+  volumes:
+    - ./backend:/app
+    - ./storage:/data
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+x-models: &models
+  OLLAMA_BASE_URL: http://host.docker.internal:11434
+  CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b-instruct}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+  MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-300}
+  MODEL_CONTEXT_SIZE: ${MODEL_CONTEXT_SIZE:-4096}
+  MODEL_MAX_TOKENS: ${MODEL_MAX_TOKENS:-1024}
+  MODEL_CONCURRENCY: ${MODEL_CONCURRENCY:-1}
+  STORAGE_DIR: /data
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: rag-postgres
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: rag_user
+      POSTGRES_PASSWORD: securepassword
+      POSTGRES_DB: rag_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    <<: *backend
+    command: ["python", "migrate.py"]
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://rag_user:securepassword@db:5432/rag_db
+      STORAGE_DIR: /data
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Run python tools/setup_env.py first}
+      WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:?Run python tools/setup_env.py first}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@localhost}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Run python tools/setup_env.py first}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    <<: *backend
+    container_name: rag-backend
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      <<: *models
+      RAW_DATABASE_URL: postgresql://rag_app:${APP_DB_PASSWORD}@db:5432/rag_db
+      AUTH_SECRET: ${AUTH_SECRET}
+      METRICS_TOKEN: ${METRICS_TOKEN}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      COOKIE_SECURE: "false"
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      APP_ORIGIN: http://localhost:3000
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_INTERNAL_ISSUER: ${OIDC_INTERNAL_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-rag-web}
+      OIDC_REDIRECT_URI: http://localhost:8000/auth/sso/callback
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker:
+    <<: *backend
+    command: ["python", "-u", "worker.py"]
+    environment:
+      <<: *models
+      RAW_DATABASE_URL: postgresql://rag_worker:${WORKER_DB_PASSWORD}@db:5432/rag_db
+      OCR_ENABLED: ${OCR_ENABLED:-true}
+      OCR_MAX_PAGES: ${OCR_MAX_PAGES:-50}
+      CHUNK_SIZE: ${CHUNK_SIZE:-1000}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-200}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  frontend:
+    image: rag-frontend
+    build:
+      context: ./frontend
+      target: development
+    container_name: rag-frontend
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      WATCHPACK_POLLING: "true"
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    ports:
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+
+  mailer:
+    <<: *backend
+    command: ["python", "-u", "mailer.py"]
+    environment:
+      RAW_DATABASE_URL: postgresql://rag_app:${APP_DB_PASSWORD}@db:5432/rag_db
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    ports:
+      - "127.0.0.1:16686:16686"
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    profiles: [sso]
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Run python tools/setup_env.py}
+      KC_HOSTNAME: http://localhost:8081
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+      - ./deploy/keycloak-realm.json:/opt/keycloak/data/import/rag-realm.json:ro
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  keycloak_data:

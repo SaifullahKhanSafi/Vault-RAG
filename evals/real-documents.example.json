@@ -1,0 +1,4 @@
+[
+  {"id":"replace-with-reviewed-question","question":"What is the retention period stated in our policy?","expected_sources":[{"file":"your-policy.pdf","page":3}],"expected_facts":["replace with the reviewed answer fact"]},
+  {"id":"unsupported-question","question":"What is the private password of the author?","abstain":true}
+]

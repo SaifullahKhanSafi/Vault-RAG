@@ -1,0 +1,86 @@
+name: Deploy
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing published release tag (vVERSION)
+        required: true
+        type: string
+      environment:
+        description: Configured GitHub environment
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+permissions:
+  contents: read
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+jobs:
+  deploy:
+    name: Deploy immutable release over SSH
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.environment }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      DEPLOY_ENV: ${{ inputs.environment }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Validate tag and default-branch ancestry
+        run: |
+          python -c "import os; from tools.version import valid; tag=os.environ['RELEASE_TAG']; assert tag.startswith('v') and valid(tag[1:]), 'Invalid version tag'"
+          target=$(git rev-parse "$RELEASE_TAG^{commit}")
+          git merge-base --is-ancestor "$target" "origin/$DEFAULT_BRANCH"
+          echo "RELEASE_REVISION=$target" >> "$GITHUB_ENV"
+      - name: Download published release assets
+        run: |
+          gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft == false' | grep -qx true
+          gh release download "$RELEASE_TAG" --pattern '*-deploy.tar.gz' --pattern SHA256SUMS --pattern release.json --dir "$RUNNER_TEMP/release"
+      - name: Verify assets and digest-pinned images
+        id: release
+        run: python tools/verify_release.py "$RUNNER_TEMP/release" --tag "$RELEASE_TAG" --revision "$RELEASE_REVISION" --registry "ghcr.io/${GITHUB_REPOSITORY,,}" --require-deployable --github-output "$GITHUB_OUTPUT"
+      - name: Transfer and deploy with pinned SSH host key
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          VERSION: ${{ steps.release.outputs.version }}
+          ARCHIVE: ${{ steps.release.outputs.archive }}
+          ARCHIVE_SHA: ${{ steps.release.outputs.archive_sha256 }}
+        run: |
+          set -euo pipefail
+          DEPLOY_PATH=${DEPLOY_PATH:-/opt/enterprise-rag-$DEPLOY_ENV}
+          export DEPLOY_PATH
+          python - <<'PY'
+          import os,re
+          patterns={'SSH_HOST':r'[A-Za-z0-9][A-Za-z0-9.-]*','SSH_USER':r'[a-z_][a-z0-9_-]*','SSH_PORT':r'[0-9]{1,5}','DEPLOY_PATH':r'/(opt|srv)/[A-Za-z0-9_/-]+'}
+          for key,pattern in patterns.items():
+              if not re.fullmatch(pattern,os.environ.get(key,'')):raise SystemExit('Missing or invalid '+key)
+          if not 1<=int(os.environ['SSH_PORT'])<=65535:raise SystemExit('Invalid SSH port')
+          for key in ('SSH_PRIVATE_KEY','SSH_KNOWN_HOSTS'):
+              if not os.environ.get(key):raise SystemExit('Configure environment secret '+key)
+          PY
+          keys=$(mktemp -d "$RUNNER_TEMP/rag-ssh.XXXXXX")
+          trap 'rm -f "$keys/key" "$keys/known_hosts"; rmdir "$keys"' EXIT
+          umask 077
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$keys/key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$keys/known_hosts"
+          options=(-i "$keys/key" -o "UserKnownHostsFile=$keys/known_hosts" -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=15)
+          ssh "${options[@]}" -p "$SSH_PORT" -l "$SSH_USER" "$SSH_HOST" "test \"\$(realpath -m '$DEPLOY_PATH')\" = '$DEPLOY_PATH' && install -d -m 700 '$DEPLOY_PATH/incoming'"
+          scp "${options[@]}" -P "$SSH_PORT" "$RUNNER_TEMP/release/$ARCHIVE" "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/incoming/$VERSION.tar.gz"
+          ssh "${options[@]}" -p "$SSH_PORT" -l "$SSH_USER" "$SSH_HOST" "bash -s -- '$DEPLOY_PATH' '$VERSION' '$ARCHIVE_SHA' '$DEPLOY_ENV'" < deploy/remote_deploy.sh
