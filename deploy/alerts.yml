@@ -1,0 +1,47 @@
+groups:
+  - name: rag
+    rules:
+      - record: rag:http_success_ratio_5m
+        expr: 1 - (sum(rate(rag_http_requests_total{status=~"5.."}[5m])) or vector(0)) / clamp_min(sum(rate(rag_http_requests_total[5m])), 0.001)
+      - alert: RagAvailabilityBudgetBurn
+        expr: rag:http_success_ratio_5m < 0.99
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: HTTP availability is below the proposed 99 percent target
+      - alert: RagSlowFirstToken
+        expr: rate(rag_first_token_seconds_sum[10m]) / clamp_min(rate(rag_first_token_seconds_count[10m]), 0.001) > 30
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Average first token latency exceeds the proposed 30 second warm service target
+      - alert: RagApiUnavailable
+        expr: up{job="rag"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: RAG API metrics endpoint is unavailable
+      - alert: RagHighHttpErrorRate
+        expr: sum(rate(rag_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(rag_http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: RAG server error rate exceeds five percent
+      - alert: RagWorkerUnavailable
+        expr: rag_worker_alive == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: No ingestion worker heartbeat
+      - alert: RagIngestionFailures
+        expr: rag_ingestion_failed_jobs > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Failed ingestion jobs need review

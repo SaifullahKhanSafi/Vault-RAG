@@ -1,0 +1,26 @@
+# Official build contexts are backend/ and frontend/.
+.git
+.env*
+**/.env*
+.secrets*
+**/.secrets*
+.vscode
+.idea
+**/venv
+**/.venv
+**/node_modules
+**/.next
+**/__pycache__
+**/*.py[cod]
+storage
+backups
+output
+tmp
+dist
+evals/private
+**/*.pdf
+**/*.log
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx

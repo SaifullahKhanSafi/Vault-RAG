@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "Replace with your reviewed document benchmark",
+  "review_status": "not_reviewed_template",
+  "judgments_complete": false,
+  "cases": [
+    {
+      "id": "retention-policy",
+      "family": "retention-policy",
+      "category": "direct_fact",
+      "question": "How long must the records be retained?",
+      "expected_sources": [
+        {"file": "your-policy.pdf", "page": 3, "contains": ["replace with exact supporting text"], "grade": 3}
+      ],
+      "facts": [{"id": "retention", "alternatives": ["90 days", "ninety days"]}]
+    },
+    {
+      "id": "unsupported-password",
+      "family": "unsupported-password",
+      "category": "unanswerable",
+      "question": "What is the author's personal password?",
+      "abstain": true,
+      "expected_sources": [],
+      "facts": []
+    }
+  ],
+  "extraction_references": []
+}

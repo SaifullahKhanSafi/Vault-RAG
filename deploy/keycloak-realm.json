@@ -1,0 +1,10 @@
+{
+  "realm": "rag", "enabled": true, "displayName": "Enterprise RAG",
+  "registrationAllowed": false, "resetPasswordAllowed": true,
+  "clients": [{"clientId": "rag-web", "enabled": true, "publicClient": true,
+    "standardFlowEnabled": true, "directAccessGrantsEnabled": false,
+    "redirectUris": ["http://localhost:8000/auth/sso/callback"],
+    "webOrigins": ["http://localhost:3000"],
+    "attributes": {"pkce.code.challenge.method": "S256"}}],
+  "requiredActions": [{"alias": "CONFIGURE_TOTP", "name": "Configure OTP", "providerId": "CONFIGURE_TOTP", "enabled": true, "defaultAction": true, "priority": 10}]
+}
