@@ -25,16 +25,23 @@ GitHub only offers manual workflow dispatch once the workflow exists on the defa
 python tools/version.py --check
 python tools/version.py --set 0.2.0
 # Add a matching CHANGELOG.md entry, then commit the changed version files.
+python tools/version.py --check
 ```
 
 After the feature PR is merged and checks pass on the default branch:
 
 ```powershell
-git tag -a v0.2.0 -m "Enterprise RAG 0.2.0"
-git push origin v0.2.0
+git switch main
+git pull --ff-only origin main
+$releaseVersion = (Get-Content VERSION -Raw).Trim()
+python tools/version.py --tag "v$releaseVersion"
+git tag -a "v$releaseVersion" -m "Enterprise RAG $releaseVersion"
+git push origin "v$releaseVersion"
 ```
 
 Use the actual value in `VERSION`; the initial packaging baseline is `0.1.0`. Semantic prereleases such as `0.2.0-rc.1` produce prereleases in GitHub. Build metadata `+...` is mapped to `_...` only in Docker tags. Existing releases should never be rewritten; publish another version.
+
+A tag does not change application metadata. If the workflow says the tag must match another version, that tag points to a commit containing the older `VERSION`. Prepare a new version in a PR, merge it, and create its matching tag from the merged commit. Changing files afterward or rerunning the old tagged workflow does not update that tag's contents.
 
 The Release workflow publishes:
 

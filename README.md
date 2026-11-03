@@ -4,7 +4,7 @@
 
 **A local AI workspace for asking questions about PDFs and inspecting the evidence.**
 
-![Version](https://img.shields.io/badge/version-0.1.0-4f46e5?style=flat-square)
+![Version](https://img.shields.io/badge/version-0.1.2-4f46e5?style=flat-square)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-16.4-18181b?style=flat-square&logo=nextdotjs)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)
@@ -263,17 +263,23 @@ flowchart LR
 
 GitHub Actions are pinned to commit hashes and updated through Dependabot. PR validation uses read-only repository permissions. Feature branches run CI and generate downloadable preview archives; production promotion uses GitHub environment secrets. Set **Required checks** as a merge requirement in repository rules.
 
-Versioning is synchronized from the root `VERSION` file:
+Versioning is synchronized from the root `VERSION` file. Creating a Git tag does not update those files. Commit and merge the version files and matching changelog entry before tagging; release validation reads the files stored in the tagged commit.
 
 ```powershell
 python tools/version.py --set 0.2.0
-# Add the matching CHANGELOG.md entry, commit and merge your feature PR.
-# On the merged release commit:
-git tag -a v0.2.0 -m "Enterprise RAG 0.2.0"
-git push origin v0.2.0
+# Add the matching CHANGELOG.md entry, then check, commit and merge your feature PR.
+python tools/version.py --check
+
+# Only after the version-change PR is merged:
+git switch main
+git pull --ff-only origin main
+$releaseVersion = (Get-Content VERSION -Raw).Trim()
+python tools/version.py --tag "v$releaseVersion"
+git tag -a "v$releaseVersion" -m "Enterprise RAG $releaseVersion"
+git push origin "v$releaseVersion"
 ```
 
-Use a version appropriate to the release; the current baseline is `0.1.0`. To create and verify an unpublished local preview:
+Use a version appropriate to the release; the current application version is `0.1.2`. To create and verify an unpublished local preview:
 
 ```powershell
 .\backend\venv\Scripts\python.exe tools/package_release.py --output dist/preview
