@@ -9,6 +9,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # TypeScript 7 has no compiler API compatible with the current typescript-eslint.
+      # Revisit when upstream lint support is available and validated.
+      - dependency-name: typescript
+        versions: [">=7.0.0"]
     groups:
       react-runtime:
         applies-to: version-updates
