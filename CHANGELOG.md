@@ -2,6 +2,16 @@
 
 Changes follow Semantic Versioning. `VERSION` is the application release version; SQL migrations retain their own ordered numbers.
 
+## [0.1.2] - 2026-11-03
+
+### Fixed
+
+- Synchronize the root, backend and frontend release metadata at 0.1.2 so it matches the next release tag.
+- Align React and React DOM at 19.3.1, group their dependency updates, and pin TypeScript 5.9.3 while the lint toolchain lacks TypeScript 7 support.
+- Clarify that version files and the changelog must be committed and merged before creating the release tag.
+
+The earlier `v0.1.1` workflow failed validation because its tagged commit still contained version 0.1.0. Existing tags are retained; this release uses a new version.
+
 ## [0.1.0] - 2026-11-03
 
 First versioned packaging baseline for the existing application. Earlier internal API/package labels were not published releases.
