@@ -1,7 +1,7 @@
 fastapi==0.162.0
 uvicorn==0.54.0
 pydantic==2.14.2
-langchain-core==1.7.3
+langchain-core==1.7.6
 langchain-ollama==1.1.0
 psycopg[binary]==3.3.6
 langchain-text-splitters==1.1.3
