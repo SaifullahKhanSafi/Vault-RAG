@@ -9,7 +9,7 @@ pypdf==6.21.4
 python-multipart==0.0.32
 httpx==0.28.1
 httpx2==2.16.0
-Authlib==1.9.1
+Authlib==1.9.5
 itsdangerous==2.2.0
 pdfplumber==0.11.10
 opentelemetry-sdk==1.45.2
